@@ -1,7 +1,7 @@
 {-# LANGUAGE Arrows #-}
 
 module Test.Behaviours (
-plane,cube
+plane,cube,sphere
 ) where
 
 import Val.Strict hiding (yaw,picth)
@@ -47,11 +47,34 @@ cube (initx,initz) (velx,velz) = proc gi -> do
         (GL.Vector3 x 0 z)
         (Quaternion rot (GL.Vector3 0 1 0))
         1 1 1
+      die = event noEvent (\(Collition gs) -> if isSphere gs then Event () else noEvent ) $ inputEvent "collition" gi
       uni :: Uniform ()
       uni = do
         set "use" (2 :: GL.GLint)
         setF "color" [1,1,1,1 :: GL.GLdouble]
-  returnA -< ret{ooRenderer=Just("cube",trans,uni)}
+  returnA -< ret{ooRenderer=Just("cube",trans,uni),ooKillReq=die}
+
+sphere :: (GL.GLdouble,GL.GLdouble)
+  -> (GL.GLdouble,GL.GLdouble)
+  -> Object GameState EventTypes
+sphere (initx,initz) (velx,velz) = proc gi -> do
+  rec
+    rot <- impulseIntegral -< (180,tag e (-360))
+    e <- iPre noEvent <<< edge -< rot > 360
+    (x,z,dirx,dirz) <- drSwitch  (moveXZSF 40 (-40) (velx,initx) 40 (-40) (velz,initz)) -<
+      ((),tag (inputEvent "collition" gi) (moveXZSF 40 (-40) (-dirx,x) 40 (-40) (-dirz,z)))
+
+  let ret = newObjOutput $ Sphere (realToFrac x) 0 (realToFrac z) 1
+      trans = Transform
+        (GL.Vector3 x 0 z)
+        (Quaternion rot (GL.Vector3 0 1 0))
+        1 1 1
+      die = event noEvent (\(Collition gs) -> if isCube gs then Event () else noEvent ) $ inputEvent "collition" gi
+      uni :: Uniform ()
+      uni = do
+        set "use" (2 :: GL.GLint)
+        setF "color" [1,1,1,1 :: GL.GLdouble]
+  returnA -< ret{ooRenderer=Just("sphere",trans,uni),ooKillReq=die}
 
 plane :: Object GameState EventTypes
 plane = proc oi -> do

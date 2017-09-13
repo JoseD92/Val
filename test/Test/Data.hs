@@ -3,7 +3,9 @@
 module Test.Data (
   GameState(..),
   EventTypes(..),
-  collition
+  collition,
+  isCube,
+  isSphere
 ) where
 
 import Val.Strict hiding (yaw)
@@ -31,6 +33,14 @@ data GameState = Null
   } | Controller {
     camController :: Camera3D
   }
+
+isCube :: GameState -> Bool
+isCube Cube{} = True
+isCube _ = False
+
+isSphere :: GameState -> Bool
+isSphere Sphere{} = True
+isSphere _ = False
 
 instance Show GameState where
   show Cube{x=xin,y=yin,z=zin} = "Cube "++show xin++" "++show yin++" "++show zin

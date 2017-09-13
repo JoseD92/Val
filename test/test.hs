@@ -14,7 +14,7 @@ import Test.Data
 import Test.Controller
 import Test.EventGenerators
 import Test.Behaviours
-import qualified System.Random as R
+import qualified System.Random.TF as TF
 
 load :: IO ResourceMap
 load = do
@@ -22,11 +22,12 @@ load = do
   (Right mat) <- makeMaterial myShader []
   let cube = ("cube","./assets/cube.obj",mat)
       plane = ("plane","./assets/plane.obj",mat)
-  loadResouces [cube,plane]
+      sphere = ("sphere","./assets/sphere.obj",mat)
+  loadResouces [cube,plane,sphere]
 
 
 main :: IO ()
 main = do
-  gen <- R.newStdGen
+  gen <- TF.mkSeedTime >>= return . TF.seedTFGen 
   let il = insertIL plane $ insertIL (controllerSF gen 5 (-0.1)) emptyIL
   initScenePar cam load [collitionGen] il

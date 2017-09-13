@@ -7,7 +7,7 @@ where
 
 import           Val.Strict.Data
 import           Val.Strict.Scene.Data
-import           Val.Strict.UI
+import           Val.Strict.UI hiding (FreeMouse)
 import           Val.Strict.Scene.Resources
 
 import           Control.Concurrent
@@ -133,7 +133,7 @@ initSceneAux :: IsCamera c => SceneSF s et
   -> IO ()
 initSceneAux sf camSF resources eventGenerators objs = do
   glfeedMVar <- newEmptyMVar
-  glinputMVar <- newEmptyMVar
+  glinputMVar <- newMVar $ GameInput Map.empty (FreeMouse 0 0) 0 (UIRead (800,600) (0,0))
   ioreqfeedMVar <- newEmptyMVar
   ioreqResponseMVar <- newEmptyMVar
 
@@ -216,10 +216,10 @@ glThread mvar gimvar resources = do
       keys <- getKeysInfo
       mouse <- getMouseInfo
       ui <- getData
-      liftIO $ putMVar gimvar $ GameInput keys mouse undefined ui
       (out,cam) <- liftIO $ takeMVar mvar
       mapM_ (mapM_ execUIActions . ooUIReq) out
       let assocs = assocsIL out
           renderComponents = foldl' (\l (_,oo) -> maybe l (:l) $ ooRenderer oo) [] assocs
       useCamera cam
       liftIO $ render rm renderComponents
+      liftIO $ putMVar gimvar $ GameInput keys mouse undefined ui

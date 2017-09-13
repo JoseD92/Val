@@ -17,6 +17,7 @@ import Test.Data
 import Test.Behaviours
 import System.Mem
 import qualified System.Random as R
+import qualified System.Random.TF as TF
 
 sumWithLimits max min a b
   | a + b > max = max
@@ -68,8 +69,11 @@ updateCam mvSensitivity cam0 yaw pitch roll deltaT gi = cam2
       else cam0
     cam2 = setYawPitchRoll yaw pitch roll cam1
 
-spawner :: R.RandomGen g => g -> SF () (Event [Object GameState EventTypes])
-spawner g = switch aux aux2
+spawner ::
+  ((GL.GLdouble,GL.GLdouble) -> (GL.GLdouble,GL.GLdouble) -> Object GameState EventTypes)
+  -> TF.TFGen
+  -> SF () (Event [Object GameState EventTypes])
+spawner f g = switch aux aux2
   where
     aux = proc _ -> do
       e <- notYet -< Event g4
@@ -78,13 +82,13 @@ spawner g = switch aux aux2
     (initz,g2) = R.randomR (-20,20) g1
     (velx,g3) = R.randomR (-5,5) g2
     (velz,g4) = R.randomR (-5,5) g3
-    newCube = cube (initx,initz) (velx,velz)
-    aux2 g = switch (aux3 g) spawner
+    newCube = f (initx,initz) (velx,velz)
+    aux2 g = switch (aux3 g) (spawner f)
     aux3 g = proc _ -> do
       e <- after 2 g -< ()
       returnA -< (noEvent,e)
 
-controllerSF :: R.RandomGen g => g -> Double -> Double -> Object GameState EventTypes
+controllerSF :: TF.TFGen -> Double -> Double -> Object GameState EventTypes
 controllerSF g mvSen viewSen = proc oi -> do
   let (mousex,mousey) = event (0,0) id $ mouseMoved oi
       t = deltaTime oi
@@ -97,13 +101,17 @@ controllerSF g mvSen viewSen = proc oi -> do
     roll <- iPre 0 -< roll
     cam <- iPre c -< updateCam mvSen cam yaw pitch roll t oi
 
-  spawn <- spawner g -< ()
+  spawn1 <- spawner cube g1 -< ()
+  spawn2 <- delayEvent 1 <<< spawner sphere g2 -< ()
+  let spawn = merge spawn1 spawn2
   rec
     num <- iPre 0 -< event num (const $ 1+num) spawn
-  --let out = (newObjOutput $ Controller cam){ooUIReq=uiAction,ooSpawnReq=spawn}
-  let out = (newObjOutput $ Controller cam){ooUIReq=uiAction,ooSpawnReq=spawn,ooWorldSpawn=event [] (const [print num]) spawn}
+  let out = (newObjOutput $ Controller cam){ooUIReq=uiAction,
+    ooSpawnReq=spawn,
+    ooWorldSpawn=event [] (const [print num]) spawn}
   returnA -< out
   where
+    (g1,g2) = R.split g
     (Right c) = createCamera3D 0 0 10 0 0 0 30 (800/600) 0.3 200
 
 cam :: SF (GameInput,IL GameState) Camera3D
