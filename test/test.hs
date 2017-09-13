@@ -29,4 +29,4 @@ main :: IO ()
 main = do
   gen <- R.newStdGen
   let il = insertIL plane $ insertIL (controllerSF gen 5 (-0.1)) emptyIL
-  initScene cam load [collitionGen] il
+  initScenePar cam load [collitionGen] il

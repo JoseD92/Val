@@ -51,27 +51,134 @@ feedbackSF camera sf = proc (gi,c) -> do
   cam <- camera -< (gi,mapIL ooObjState b)
   returnA -< (b,cam)
 
+--------------------------------------------------------------------------------
+-- Game single scene.
+--------------------------------------------------------------------------------
 
--- | Main loop for OpenGL ones the SF have been initialized.
-sceneLoop :: IORef [(ILKey,IOExec et)]
-  -> IORef (GLUT ())
-  -> IO Double
-  -> ReactHandle (GameInput,IL (Map EventIdentifier et)) (IL (ObjOutput s et),c)
-  -> GLUT ()
-sceneLoop asyncRef uiRef clock rh = do
-  keys <- getKeysInfo
-  mouse <- getMouseInfo
-  ui <- getData
-  uiaction <- liftIO $ do
-    (e,l) <- readIORef asyncRef >>= events
-    writeIORef asyncRef l
-    deltaTime <- clock
-    b <- react rh (deltaTime,Just (GameInput keys mouse deltaTime ui,e))
-    unless b GLUT.exit
-    readIORef uiRef
-  uiaction
+-- | Generates the input for each object based on world input and provided event generators.
+route :: [ IL s -> IL (Map EventIdentifier et) ] -- event generators
+  -> (GameInput, IL (ObjOutput s et), IL (Map EventIdentifier et)) -- input from world and oo from last iteration
+  -> IL sf -- objects to route
+  -> IL (ObjInput s et,sf)
+route eventGenerators (gi,ooil,worldEvents) = mapILWithKey aux
   where
-    events = foldM eventAux (emptyIL,[])
+    defaultObjInput = ObjInput Map.empty gi
+    states = mapIL ooObjState ooil
+    events = map (\f -> f states) eventGenerators
+    aux key o = (defaultObjInput{oiEvents= unions e },o)
+      where
+        worldEvent = lookupIL key worldEvents
+        thisEvent = map (lookupIL key) events
+        e = catMaybes $ worldEvent:thisEvent
+
+-- | Generates the input for each object based on world input and provided event generators.
+routePar :: [ IL s -> IL (Map EventIdentifier et) ] -- event generators
+  -> (GameInput, IL (ObjOutput s et), IL (Map EventIdentifier et)) -- input from world and oo from last iteration
+  -> IL sf -- objects to route
+  -> IL (ObjInput s et,sf)
+routePar eventGenerators (gi,ooil,worldEvents) objs =
+  withStrategy (parTraversable (evalTuple2 rpar r0)) $ mapILWithKey aux objs
+  where
+    defaultObjInput = ObjInput Map.empty gi
+    states = mapIL ooObjState ooil
+    events = map (\f -> f states) eventGenerators
+    aux key o = (defaultObjInput{oiEvents= unions e },o)
+      where
+        worldEvent = lookupIL key worldEvents
+        thisEvent = map (lookupIL key) events
+        e = catMaybes $ worldEvent:thisEvent
+
+type SceneSF s et = [ IL s -> IL (Map EventIdentifier et) ]
+  -> IL (Object s et)
+  -> SF (GameInput, IL (ObjOutput s et), IL (Map EventIdentifier et)) (IL (ObjOutput s et))
+
+-- | A val scene.
+sceneSF :: [ IL s -> IL (Map EventIdentifier et) ]
+  -> IL (Object s et)
+  -> SF (GameInput, IL (ObjOutput s et), IL (Map EventIdentifier et)) (IL (ObjOutput s et))
+sceneSF eventGenerators objs = dpSwitch
+  (route eventGenerators)
+  objs
+  (arr killOrSpawn >>> notYet)
+  (\objects f -> sceneSF eventGenerators (f objects))
+
+sceneSFPar :: [ IL s -> IL (Map EventIdentifier et) ]
+  -> IL (Object s et)
+  -> SF (GameInput, IL (ObjOutput s et), IL (Map EventIdentifier et)) (IL (ObjOutput s et))
+sceneSFPar eventGenerators objs = dpSwitch
+  (routePar eventGenerators)
+  objs
+  (arr killOrSpawn >>> notYet)
+  (\objects f -> sceneSFPar eventGenerators (f objects))
+
+initScene :: IsCamera c => SF (GameInput,IL s) c
+  -> IO ResourceMap
+  -> [ IL s -> IL (Map EventIdentifier et) ]
+  -> IL (Object s et)
+  -> IO ()
+initScene = initSceneAux sceneSF
+
+initScenePar :: IsCamera c => SF (GameInput,IL s) c
+  -> IO ResourceMap
+  -> [ IL s -> IL (Map EventIdentifier et) ]
+  -> IL (Object s et)
+  -> IO ()
+initScenePar = initSceneAux sceneSFPar
+
+initSceneAux :: IsCamera c => SceneSF s et
+  -> SF (GameInput,IL s) c
+  -> IO ResourceMap
+  -> [ IL s -> IL (Map EventIdentifier et) ]
+  -> IL (Object s et)
+  -> IO ()
+initSceneAux sf camSF resources eventGenerators objs = do
+  glfeedMVar <- newEmptyMVar
+  glinputMVar <- newEmptyMVar
+  ioreqfeedMVar <- newEmptyMVar
+  ioreqResponseMVar <- newEmptyMVar
+
+  _ <- forkIO $ ioReqThread ioreqfeedMVar ioreqResponseMVar []
+  _ <- forkIO $ do
+    rh <- reactInit
+      (return (emptyGameInput,emptyIL))
+      (reacFun [glfeedMVar,ioreqfeedMVar])
+      (feedbackSF camSF (sf eventGenerators objs))
+    clock <- initClock >>= newIORef
+    forever $ do
+      gameInput <- takeMVar glinputMVar
+      events <- takeMVar ioreqResponseMVar
+      time <- getDelta clock
+      react rh (time,Just (gameInput{timeGI=time},events))
+
+  glThread glfeedMVar glinputMVar resources
+  where
+    reacFun l _ bool out = do
+      mapConcurrently_ (`putMVar` out) l
+      return bool
+
+
+--------------------------------------------------------------------------------
+-- Threads.
+--------------------------------------------------------------------------------
+
+-- | Thread that run io request from the objects output.
+ioReqThread :: MVar (IL (ObjOutput s et),c)
+  -> MVar (IL (Map EventIdentifier et))
+  -> [(ILKey,IOExec et)]
+  -> IO ()
+ioReqThread inMvar outMvar l = do
+  (e,l2) <- foldM eventAux (emptyIL,[]) l
+  putMVar outMvar e
+  (out,_) <- takeMVar inMvar
+  l3 <- foldM newAsynAux l2 $ assocsIL out
+  ioReqThread inMvar outMvar l3
+  where
+    newAsynAux l (key,a) = do
+      mapM_ async $ ooWorldSpawn a
+      let ioReqs = ooWorldReq a
+      execs <- mapM toExec ioReqs
+      let ll = zip (repeat key) execs
+      return $ ll++l
 
 -- | process a ioreq.
 eventAux :: (IL (Map EventIdentifier et),[(ILKey,IOExec et)])
@@ -94,130 +201,25 @@ eventAux (il,l) (key,ioreq) =
     myinsert il k i e = if memberIL k il then modifyIL k (Map.insert i e) il
       else insertILWithKey (Map.singleton i e) k il
 
-sceneRender :: IsCamera c => ResourceMap
-  -> IORef [(ILKey,IOExec et)]
-  -> IORef (GLUT ())
-  -> ReactHandle (GameInput,IL (Map EventIdentifier et)) (IL (ObjOutput s et),c)
-  -> Bool
-  -> (IL (ObjOutput s et),c)
-  -> IO Bool
-sceneRender rm asyn uiRef rh b (out,cam) = do
-  otherIO <- async $ mapConcurrently_ id [io1,io2]
-  ioOpenGL -- this thread have the OpenGL context, cant sent it away.
-  wait otherIO
-  return b
-  where
-    assocs = assocsIL out
-    renderComponents = foldl' (\l (_,oo) -> maybe l (:l) $ ooRenderer oo) [] assocs
-    newAsyn ini = foldM newAsynAux ini assocs
-    newAsynAux l (key,a) = do
-      mapM_ async $ ooWorldSpawn a
-      let ioReqs = ooWorldReq a
-      execs <- mapM toExec ioReqs
-      let ll = zip (repeat key) execs
-      return $ ll++l
-    io1 = readIORef asyn >>= newAsyn >>= writeIORef asyn
-    io2 = writeIORef uiRef $ foldl'
-      (\io oo -> foldl' (flip ((>>) . execUIActions)) (return ()) (ooUIReq oo) >> io)
-      (return ())
-      out
-    ioOpenGL = useCamera cam >> render rm renderComponents
-
---------------------------------------------------------------------------------
--- Game single scene.
---------------------------------------------------------------------------------
-
--- | Generates the input for each object based on world input and provided event generators.
-route :: [ IL s -> IL (Map EventIdentifier et) ] -- event generators
-  -> (GameInput, IL (ObjOutput s et), IL (Map EventIdentifier et)) -- input from world and oo from last iteration
-  -> IL sf -- objects to route
-  -> IL (ObjInput s et,sf)
-route eventGenerators (gi,ooil,worldEvents) = mapILWithKey aux
-  where
-    defaultObjInput = ObjInput Map.empty gi
-    states = mapIL ooObjState ooil
-    events = map (\f -> f states) eventGenerators
-    aux key o = (defaultObjInput{oiEvents= unions e },o)
-      where
-        worldEvent = lookupIL key worldEvents
-        thisEvent = map (lookupIL key) events
-        e = catMaybes $ worldEvent:thisEvent
-
--- | A val scene.
-sceneSF :: [ IL s -> IL (Map EventIdentifier et) ]
-  -> IL (Object s et)
-  -> SF (GameInput, IL (ObjOutput s et), IL (Map EventIdentifier et)) (IL (ObjOutput s et))
-sceneSF eventGenerators objs = dpSwitch
-  (route eventGenerators)
-  objs
-  (arr killOrSpawn >>> notYet)
-  (\objects f -> sceneSF eventGenerators (f objects))
-
-initScene :: IsCamera c => SF (GameInput,IL s) c
+-- | A thread that render the output of each tick.
+glThread :: (IsCamera c) => MVar (IL (ObjOutput s et),c)
+  -> MVar GameInput
   -> IO ResourceMap
-  -> [ IL s -> IL (Map EventIdentifier et) ]
-  -> IL (Object s et)
   -> IO ()
-initScene camSF resources eventGenerators objs = do
+glThread mvar gimvar resources = do
   initOpenGLEnvironment 800 600 ""
   rm <- resources
-  ref <- newIORef []
-  uiref <- newIORef $ return ()
-  rh <- reactInit
-    (return (emptyGameInput,emptyIL))
-    (sceneRender rm ref uiref)
-    (feedbackSF camSF (sceneSF eventGenerators objs))
-  clock <- initClock >>= newIORef
-
   performGC
-  initGL $ sceneLoop ref uiref (getDelta clock) rh
-
---------------------------------------------------------------------------------
--- Game single scene, run using parallel.
---------------------------------------------------------------------------------
-
--- | Same as route but with parallel computations.
-routePar :: (NFData et) => [ IL s -> IL (Map EventIdentifier et) ]
-  -> (GameInput, IL (ObjOutput s et), IL (Map EventIdentifier et))
-  -> IL sf
-  -> IL (ObjInput s et,sf)
-routePar eventGenerators (gi,ooil,worldEvents) objs =
-  withStrategy (parTraversable (evalTuple2 rpar r0)) $ mapILWithKey aux objs
+  initGL $ aux rm
   where
-    defaultObjInput = ObjInput Map.empty gi
-    states = mapIL ooObjState ooil
-    -- events = withStrategy (parTraversable rpar) $ map (\f -> f states) eventGenerators
-    events = map (\f -> f states) eventGenerators
-    aux key o = (defaultObjInput{oiEvents= unions e },o)
-      where
-        worldEvent = lookupIL key worldEvents
-        thisEvent = map (lookupIL key) events
-        e = catMaybes $ worldEvent:thisEvent
-
--- | Same as sceneSF but with parallel computations.
-sceneSFPar :: (NFData et) => [ IL s -> IL (Map EventIdentifier et) ]
-  -> IL (Object s et)
-  -> SF (GameInput, IL (ObjOutput s et), IL (Map EventIdentifier et)) (IL (ObjOutput s et))
-sceneSFPar eventGenerators objs = dpSwitch
-  (routePar eventGenerators)
-  objs (arr killOrSpawn >>> notYet)
-  (\objects f -> sceneSFPar eventGenerators (f objects))
-
-initScenePar :: (NFData et,IsCamera c) => SF (GameInput,IL s) c
-  -> IO ResourceMap
-  -> [ IL s -> IL (Map EventIdentifier et) ]
-  -> IL (Object s et)
-  -> IO ()
-initScenePar camSF resources eventGenerators objs = do
-  initOpenGLEnvironment 800 600 ""
-  rm <- resources
-  ref <- newIORef []
-  uiref <- newIORef $ return ()
-  rh <- reactInit
-    (return (emptyGameInput,emptyIL))
-    (sceneRender rm ref uiref)
-    (feedbackSF camSF (sceneSFPar eventGenerators objs))
-  clock <- initClock >>= newIORef
-
-  performGC
-  initGL $ sceneLoop ref uiref (getDelta clock) rh
+    aux rm = do
+      keys <- getKeysInfo
+      mouse <- getMouseInfo
+      ui <- getData
+      liftIO $ putMVar gimvar $ GameInput keys mouse undefined ui
+      (out,cam) <- liftIO $ takeMVar mvar
+      mapM_ (mapM_ execUIActions . ooUIReq) out
+      let assocs = assocsIL out
+          renderComponents = foldl' (\l (_,oo) -> maybe l (:l) $ ooRenderer oo) [] assocs
+      useCamera cam
+      liftIO $ render rm renderComponents

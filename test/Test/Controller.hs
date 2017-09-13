@@ -100,6 +100,7 @@ controllerSF g mvSen viewSen = proc oi -> do
   spawn <- spawner g -< ()
   rec
     num <- iPre 0 -< event num (const $ 1+num) spawn
+  --let out = (newObjOutput $ Controller cam){ooUIReq=uiAction,ooSpawnReq=spawn}
   let out = (newObjOutput $ Controller cam){ooUIReq=uiAction,ooSpawnReq=spawn,ooWorldSpawn=event [] (const [print num]) spawn}
   returnA -< out
   where
