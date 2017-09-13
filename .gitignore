@@ -1,6 +1,8 @@
 dist
 dist-*
 cabal-dev
+*.pdf
+*.ps
 *.o
 *.hi
 *.chi
@@ -18,3 +20,9 @@ cabal.sandbox.config
 .stack-work/
 cabal.project.local
 .HTF/
+*.exe
+*.dump-simpl
+
+src/EasyGL.hs
+src/EasyGLUT.hs
+src/EasyGL/
