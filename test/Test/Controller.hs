@@ -102,8 +102,9 @@ controllerSF g mvSen viewSen = proc oi -> do
     cam <- iPre c -< updateCam mvSen cam yaw pitch roll t oi
 
   spawn1 <- spawner cube g1 -< ()
-  spawn2 <- delayEvent 1 <<< spawner sphere g2 -< ()
-  let spawn = merge spawn1 spawn2
+  --spawn2 <- delayEvent 1 <<< spawner sphere g2 -< ()
+  --let spawn = merge spawn1 spawn2
+  let spawn = spawn1
   rec
     num <- iPre 0 -< event num (const $ 1+num) spawn
   let out = (newObjOutput $ Controller cam){ooUIReq=uiAction,

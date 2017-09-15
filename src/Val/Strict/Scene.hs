@@ -217,9 +217,9 @@ glThread mvar gimvar resources = do
       mouse <- getMouseInfo
       ui <- getData
       (out,cam) <- liftIO $ takeMVar mvar
+      liftIO $ putMVar gimvar $ GameInput keys mouse undefined ui
       mapM_ (mapM_ execUIActions . ooUIReq) out
       let assocs = assocsIL out
           renderComponents = foldl' (\l (_,oo) -> maybe l (:l) $ ooRenderer oo) [] assocs
       useCamera cam
       liftIO $ render rm renderComponents
-      liftIO $ putMVar gimvar $ GameInput keys mouse undefined ui
