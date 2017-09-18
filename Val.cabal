@@ -35,6 +35,7 @@ library
 
   other-modules:
     Val.Strict.UI
+    Val.Strict.IL
     Val.Strict.Data
     Val.Strict.Events
     Val.Strict.Scene
