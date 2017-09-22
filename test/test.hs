@@ -28,6 +28,6 @@ load = do
 
 main :: IO ()
 main = do
-  gen <- TF.mkSeedTime >>= return . TF.seedTFGen 
-  let il = insertIL plane $ insertIL (controllerSF gen 5 (-0.1)) emptyIL
+  gen <- TF.mkSeedTime >>= return . TF.seedTFGen
+  let il = [plane,controllerSF gen 5 (-0.1)]
   initScenePar cam load [collitionGen] il

@@ -6,7 +6,7 @@ initScenePar
 where
 
 import           Val.Strict.Data
-import           Val.Strict.Scene.Data
+import qualified Val.Strict.IL as IL
 import           Val.Strict.UI hiding (FreeMouse)
 import           Val.Strict.Scene.Resources
 
@@ -96,18 +96,14 @@ type SceneSF s et = [ IL s -> IL (Event et) ]
   -> SF (GameInput, IL (ObjOutput s et), IL (Event et)) (IL (ObjOutput s et))
 
 -- | A val scene.
-sceneSF :: MergeableEvent et => [ IL s -> IL (Event et) ]
-  -> IL (Object s et)
-  -> SF (GameInput, IL (ObjOutput s et), IL (Event et)) (IL (ObjOutput s et))
+sceneSF :: MergeableEvent et => SceneSF s et
 sceneSF eventGenerators objs = dpSwitch
   (route eventGenerators)
   objs
   (arr killOrSpawn >>> notYet)
   (\objects f -> sceneSF eventGenerators (f objects))
 
-sceneSFPar :: MergeableEvent et => [ IL s -> IL (Event et) ]
-  -> IL (Object s et)
-  -> SF (GameInput, IL (ObjOutput s et), IL (Event et)) (IL (ObjOutput s et))
+sceneSFPar :: MergeableEvent et => SceneSF s et
 sceneSFPar eventGenerators objs = dpSwitch
   (routePar eventGenerators)
   objs
@@ -117,14 +113,14 @@ sceneSFPar eventGenerators objs = dpSwitch
 initScene :: (IsCamera c,MergeableEvent et) => SF (GameInput,IL s) c
   -> IO ResourceMap
   -> [ IL s -> IL (Event et) ]
-  -> IL (Object s et)
+  -> [Object s et]
   -> IO ()
 initScene = initSceneAux sceneSF
 
 initScenePar :: (IsCamera c,MergeableEvent et) => SF (GameInput,IL s) c
   -> IO ResourceMap
   -> [ IL s -> IL (Event et) ]
-  -> IL (Object s et)
+  -> [Object s et]
   -> IO ()
 initScenePar = initSceneAux sceneSFPar
 
@@ -132,9 +128,11 @@ initSceneAux :: (IsCamera c,MergeableEvent et) => SceneSF s et
   -> SF (GameInput,IL s) c
   -> IO ResourceMap
   -> [ IL s -> IL (Event et) ]
-  -> IL (Object s et)
+  -> [Object s et]
   -> IO ()
-initSceneAux sf camSF resources eventGenerators objs = do
+initSceneAux sf camSF resources eventGenerators objsList = do
+  let objs = IL.fromList objsList
+
   glfeedMVar <- newEmptyMVar
   glinputMVar <- newMVar $ GameInput Map.empty (FreeMouse 0 0) 0 (UIRead (800,600) (0,0))
   ioreqfeedMVar <- newEmptyMVar
