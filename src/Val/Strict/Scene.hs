@@ -138,12 +138,16 @@ initSceneAux sf camSF resources eventGenerators objsList = do
   ioreqfeedMVar <- newEmptyMVar
   ioreqResponseMVar <- newEmptyMVar
 
+  waitLoad <- newEmptyMVar -- Force Yampa to wait until resources have been loaded.
+
   _ <- forkIO $ ioReqThread ioreqfeedMVar ioreqResponseMVar []
   _ <- forkIO $ do
     rh <- reactInit
       (return (emptyGameInput,emptyIL))
       (reacFun [glfeedMVar,ioreqfeedMVar])
       (feedbackSF camSF (sf eventGenerators objs))
+
+    _ <- takeMVar waitLoad
     clock <- initClock >>= newIORef
     forever $ do
       gameInput <- takeMVar glinputMVar
@@ -151,7 +155,7 @@ initSceneAux sf camSF resources eventGenerators objsList = do
       time <- getDelta clock
       react rh (time,Just (gameInput{timeGI=time},events))
 
-  glThread glfeedMVar glinputMVar resources
+  glThread waitLoad glfeedMVar glinputMVar resources
   where
     reacFun l _ bool out = do
       mapConcurrently_ (`putMVar` out) l
@@ -203,14 +207,16 @@ eventAux (il,l) (key,ioreq) =
       else insertILWithKey (Event e) k il
 
 -- | A thread that render the output of each tick.
-glThread :: (IsCamera c) => MVar (IL (ObjOutput s et),c)
+glThread :: (IsCamera c) => MVar Bool
+  -> MVar (IL (ObjOutput s et),c)
   -> MVar GameInput
   -> IO ResourceMap
   -> IO ()
-glThread mvar gimvar resources = do
+glThread waitLoad mvar gimvar resources = do
   initOpenGLEnvironment 800 600 ""
   rm <- resources
   performGC
+  putMVar waitLoad True
   initGL $ aux rm
   where
     aux rm = do
