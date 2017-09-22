@@ -55,7 +55,9 @@ collition Sphere{x=x1,z=y1} Cube{x=x2,z=y2} = ( (x1-x2)^2 + (y1-y2)^2 ) < 4
 collition Sphere{x=x1,z=y1} Sphere{x=x2,z=y2} = ( (x1-x2)^2 + (y1-y2)^2 ) < 4
 collition _ _ = False
 
-data EventTypes = Collition GameState deriving (Show)
+data EventTypes = Collition GameState
+  | NoCollition
+  deriving (Show)
 
 instance NFData GameState where
   rnf (Cube x y z size) = rnf x `seq` rnf y `seq` rnf z `seq` rnf size
@@ -65,3 +67,10 @@ instance NFData GameState where
 
 instance NFData EventTypes where
   rnf (Collition x) = rnf x
+  rnf NoCollition = ()
+
+instance MergeableEvent EventTypes where
+  union NoCollition NoCollition = NoCollition
+  union a NoCollition = a
+  union NoCollition a = a
+  union a b = a

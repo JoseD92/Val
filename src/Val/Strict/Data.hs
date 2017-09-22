@@ -3,7 +3,7 @@ module Val.Strict.Data (
   Resource,
   ResourceMap,
 
-  EventIdentifier,
+  MergeableEvent(..),
   GameInput(..),
   Object,
   ObjInput(..),
@@ -29,12 +29,14 @@ where
 
 import qualified Graphics.Rendering.OpenGL as GL
 import FRP.Yampa
-import Data.Map.Strict hiding (fromList)
+import Data.Map.Strict hiding (fromList,union,unions,toList)
 import qualified Data.Map.Strict as Map
 import Control.DeepSeq
 import Control.Seq
 import EasyGL
 import EasyGLUT
+import Data.List (foldl1')
+import Data.Foldable (toList)
 import qualified EasyGLUT as GLUT
 import Control.Exception
 import Control.Concurrent.Async
@@ -62,7 +64,9 @@ type ResourceMap = Map ResourceIdentifier (Entity,Material)
 -- Game stuff.
 --------------------------------------------------------------------------------
 
-type EventIdentifier = String
+-- | Describes the type of objects that are event containers and can combine the events.
+class MergeableEvent a where
+  union :: a -> a -> a
 
 data GameInput = GameInput {
     keysGI :: Map Key KeyState,
@@ -77,7 +81,7 @@ emptyGameInput = GameInput Map.empty (GLUT.FreeMouse 0 0) 0 undefined
 type Object outState eventType = SF (ObjInput outState eventType) (ObjOutput outState eventType)
 
 data ObjInput state eventType = ObjInput {
-  oiEvents :: Map EventIdentifier eventType,
+  oiEvents :: Event eventType,
   oiGameInput :: GameInput
 }
 
@@ -85,14 +89,12 @@ instance (NFData eventType) => NFData (ObjInput state eventType) where
   rnf ObjInput{oiEvents=events} = rnf events -- the game input from the world will normally be normal form because it comes from IO.
 
 data IOReq a = IOReq {
-    ioReqEventIdentifier :: EventIdentifier,
     ioReqIO :: IO a,
     ioReqError :: SomeException -> a,
     ioBloq :: Bool -- whether to wait or not the io. If True the result will be deliver next frame, otherwise, when result is available.
   }
 
 data IOExec a = IOExec {
-    ioExecEventIdentifier :: EventIdentifier,
     ioExecIO :: Async a,
     ioExecError :: SomeException -> a,
     ioExecBloq :: Bool -- whether to wait or not the io. If True the result will be deliver next frame, otherwise, when result is available.
@@ -102,7 +104,6 @@ toExec :: IOReq a -> IO (IOExec a)
 toExec req = do
   a <- async $ ioReqIO req
   return IOExec{
-      ioExecEventIdentifier=ioReqEventIdentifier req,
       ioExecIO=a,
       ioExecError=ioReqError req,
       ioExecBloq=ioBloq req
@@ -119,7 +120,7 @@ data ObjOutput state eventType = ObjOutput {
 }
 
 emptyObjInput :: ObjInput s a
-emptyObjInput = ObjInput empty emptyGameInput
+emptyObjInput = ObjInput undefined emptyGameInput
 
 newObjOutput :: a -> ObjOutput a b
 newObjOutput state = ObjOutput{ooObjState=state,

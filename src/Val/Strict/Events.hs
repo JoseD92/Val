@@ -91,6 +91,6 @@ mousePositionMoved initialPosition = proc oi -> do
 
 
 
--- | Checks for an event within an ObjInput.
-inputEvent :: EventIdentifier -> ObjInput s a -> Event a
-inputEvent identifier oi = maybe NoEvent Event $ Map.lookup identifier $ oiEvents oi
+-- | Returns the event combinator.
+inputEvent :: ObjInput s a -> Event a
+inputEvent = oiEvents

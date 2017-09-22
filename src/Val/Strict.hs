@@ -30,7 +30,7 @@ module Val.Strict (
   Resource,
   ResourceMap,
 
-  EventIdentifier,
+  MergeableEvent(..),
   GameInput(keysGI,mouseGI),
   Object,
   ObjInput,

@@ -19,7 +19,7 @@ import           Control.Monad.IO.Class      (MonadIO, liftIO)
 import           Control.Parallel.Strategies
 import           Data.IORef                  (IORef, newIORef, readIORef,
                                               writeIORef)
-import           Data.Map.Strict             hiding (foldl, map, foldr, foldl')
+import           Data.Map.Strict             hiding (foldl, map, foldr, foldl', union, unions, null)
 import qualified Data.Map.Strict             as Map
 import Data.Foldable (foldl')
 import           Data.Maybe
@@ -43,26 +43,29 @@ killOrSpawn (_,oo) = foldl (mergeBy (.)) noEvent events
         kill = tag (ooKillReq v) (deleteIL k)
 
 feedbackSF :: IsCamera c => SF (GameInput,IL s) c
-  -> SF (GameInput,IL (ObjOutput s et),IL (Map EventIdentifier et)) (IL (ObjOutput s et))
-  -> SF (GameInput,IL (Map EventIdentifier et)) (IL (ObjOutput s et),c)
+  -> SF (GameInput,IL (ObjOutput s et),IL (Event et)) (IL (ObjOutput s et))
+  -> SF (GameInput,IL (Event et)) (IL (ObjOutput s et),c)
 feedbackSF camera sf = proc (gi,c) -> do
   rec
     b <- sf -< (gi,b,c)
   cam <- camera -< (gi,mapIL ooObjState b)
   returnA -< (b,cam)
 
+unions :: (MergeableEvent a) => [Event a] -> Event a
+unions = foldl' (mergeBy union) noEvent
+
 --------------------------------------------------------------------------------
 -- Game single scene.
 --------------------------------------------------------------------------------
 
 -- | Generates the input for each object based on world input and provided event generators.
-route :: [ IL s -> IL (Map EventIdentifier et) ] -- event generators
-  -> (GameInput, IL (ObjOutput s et), IL (Map EventIdentifier et)) -- input from world and oo from last iteration
+route :: MergeableEvent et => [ IL s -> IL (Event et) ] -- event generators
+  -> (GameInput, IL (ObjOutput s et), IL (Event et)) -- input from world and oo from last iteration
   -> IL sf -- objects to route
   -> IL (ObjInput s et,sf)
 route eventGenerators (gi,ooil,worldEvents) = mapILWithKey aux
   where
-    defaultObjInput = ObjInput Map.empty gi
+    defaultObjInput = ObjInput noEvent gi
     states = mapIL ooObjState ooil
     events = map (\f -> f states) eventGenerators
     aux key o = (defaultObjInput{oiEvents= unions e },o)
@@ -72,14 +75,14 @@ route eventGenerators (gi,ooil,worldEvents) = mapILWithKey aux
         e = catMaybes $ worldEvent:thisEvent
 
 -- | Generates the input for each object based on world input and provided event generators.
-routePar :: [ IL s -> IL (Map EventIdentifier et) ] -- event generators
-  -> (GameInput, IL (ObjOutput s et), IL (Map EventIdentifier et)) -- input from world and oo from last iteration
+routePar :: MergeableEvent et => [ IL s -> IL (Event et) ] -- event generators
+  -> (GameInput, IL (ObjOutput s et), IL (Event et)) -- input from world and oo from last iteration
   -> IL sf -- objects to route
   -> IL (ObjInput s et,sf)
 routePar eventGenerators (gi,ooil,worldEvents) objs =
   withStrategy (parTraversable (evalTuple2 rpar r0)) $ mapILWithKey aux objs
   where
-    defaultObjInput = ObjInput Map.empty gi
+    defaultObjInput = ObjInput noEvent gi
     states = mapIL ooObjState ooil
     events = map (\f -> f states) eventGenerators
     aux key o = (defaultObjInput{oiEvents= unions e },o)
@@ -88,47 +91,47 @@ routePar eventGenerators (gi,ooil,worldEvents) objs =
         thisEvent = map (lookupIL key) events
         e = catMaybes $ worldEvent:thisEvent
 
-type SceneSF s et = [ IL s -> IL (Map EventIdentifier et) ]
+type SceneSF s et = [ IL s -> IL (Event et) ]
   -> IL (Object s et)
-  -> SF (GameInput, IL (ObjOutput s et), IL (Map EventIdentifier et)) (IL (ObjOutput s et))
+  -> SF (GameInput, IL (ObjOutput s et), IL (Event et)) (IL (ObjOutput s et))
 
 -- | A val scene.
-sceneSF :: [ IL s -> IL (Map EventIdentifier et) ]
+sceneSF :: MergeableEvent et => [ IL s -> IL (Event et) ]
   -> IL (Object s et)
-  -> SF (GameInput, IL (ObjOutput s et), IL (Map EventIdentifier et)) (IL (ObjOutput s et))
+  -> SF (GameInput, IL (ObjOutput s et), IL (Event et)) (IL (ObjOutput s et))
 sceneSF eventGenerators objs = dpSwitch
   (route eventGenerators)
   objs
   (arr killOrSpawn >>> notYet)
   (\objects f -> sceneSF eventGenerators (f objects))
 
-sceneSFPar :: [ IL s -> IL (Map EventIdentifier et) ]
+sceneSFPar :: MergeableEvent et => [ IL s -> IL (Event et) ]
   -> IL (Object s et)
-  -> SF (GameInput, IL (ObjOutput s et), IL (Map EventIdentifier et)) (IL (ObjOutput s et))
+  -> SF (GameInput, IL (ObjOutput s et), IL (Event et)) (IL (ObjOutput s et))
 sceneSFPar eventGenerators objs = dpSwitch
   (routePar eventGenerators)
   objs
   (arr killOrSpawn >>> notYet)
   (\objects f -> sceneSFPar eventGenerators (f objects))
 
-initScene :: IsCamera c => SF (GameInput,IL s) c
+initScene :: (IsCamera c,MergeableEvent et) => SF (GameInput,IL s) c
   -> IO ResourceMap
-  -> [ IL s -> IL (Map EventIdentifier et) ]
+  -> [ IL s -> IL (Event et) ]
   -> IL (Object s et)
   -> IO ()
 initScene = initSceneAux sceneSF
 
-initScenePar :: IsCamera c => SF (GameInput,IL s) c
+initScenePar :: (IsCamera c,MergeableEvent et) => SF (GameInput,IL s) c
   -> IO ResourceMap
-  -> [ IL s -> IL (Map EventIdentifier et) ]
+  -> [ IL s -> IL (Event et) ]
   -> IL (Object s et)
   -> IO ()
 initScenePar = initSceneAux sceneSFPar
 
-initSceneAux :: IsCamera c => SceneSF s et
+initSceneAux :: (IsCamera c,MergeableEvent et) => SceneSF s et
   -> SF (GameInput,IL s) c
   -> IO ResourceMap
-  -> [ IL s -> IL (Map EventIdentifier et) ]
+  -> [ IL s -> IL (Event et) ]
   -> IL (Object s et)
   -> IO ()
 initSceneAux sf camSF resources eventGenerators objs = do
@@ -162,8 +165,8 @@ initSceneAux sf camSF resources eventGenerators objs = do
 --------------------------------------------------------------------------------
 
 -- | Thread that run io request from the objects output.
-ioReqThread :: MVar (IL (ObjOutput s et),c)
-  -> MVar (IL (Map EventIdentifier et))
+ioReqThread :: MergeableEvent et => MVar (IL (ObjOutput s et),c)
+  -> MVar (IL (Event et))
   -> [(ILKey,IOExec et)]
   -> IO ()
 ioReqThread inMvar outMvar l = do
@@ -181,25 +184,25 @@ ioReqThread inMvar outMvar l = do
       return $ ll++l
 
 -- | process a ioreq.
-eventAux :: (IL (Map EventIdentifier et),[(ILKey,IOExec et)])
+eventAux :: MergeableEvent et => (IL (Event et),[(ILKey,IOExec et)])
   -> (ILKey,IOExec et)
-  -> IO (IL (Map EventIdentifier et),[(ILKey,IOExec et)])
+  -> IO (IL (Event et),[(ILKey,IOExec et)])
 eventAux (il,l) (key,ioreq) =
   if ioExecBloq ioreq then do
     out <- waitCatch (ioExecIO ioreq)
-    return $ either (\e -> (myinsert il key (ioExecEventIdentifier ioreq) (ioExecError ioreq e),l) )
-      (\et -> (myinsert il key (ioExecEventIdentifier ioreq) et,l) )
+    return $ either (\e -> (myinsert il key (ioExecError ioreq e),l) )
+      (\et -> (myinsert il key et,l) )
       out
   else do
     mio <- poll (ioExecIO ioreq)
     case mio of
       Nothing -> return (il,(key,ioreq):l)
-      Just e -> return $ either (\e -> (myinsert il key (ioExecEventIdentifier ioreq) (ioExecError ioreq e),l) )
-        (\et -> (myinsert il key (ioExecEventIdentifier ioreq) et,l) )
+      Just e -> return $ either (\e -> (myinsert il key (ioExecError ioreq e),l) )
+        (\et -> (myinsert il key et,l) )
         e
   where
-    myinsert il k i e = if memberIL k il then modifyIL k (Map.insert i e) il
-      else insertILWithKey (Map.singleton i e) k il
+    myinsert il k e = if memberIL k il then modifyIL k (mergeBy union $ Event e) il
+      else insertILWithKey (Event e) k il
 
 -- | A thread that render the output of each tick.
 glThread :: (IsCamera c) => MVar (IL (ObjOutput s et),c)
