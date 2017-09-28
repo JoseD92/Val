@@ -96,11 +96,11 @@ mousePositionMoved initialPosition = proc oi -> do
 
 -- | Returns the output state from last frame of the object with the given key if it existed last frame.
 getObjOut :: ObjInput state eventType -> ILKey -> Maybe state
-getObjOut oi key = fmap ooObjState $ lookupIL key $ oiPastFrame oi
+getObjOut oi key = lookupIL key $ oiPastFrame oi
 
 -- | Retruns the objects from last frame along with its key.
 getObjects :: ObjInput state eventType -> [(ILKey,state)]
-getObjects = map (second ooObjState) . assocsIL . oiPastFrame
+getObjects = assocsIL . oiPastFrame
 
 -- | Returns the event combinator.
 inputEvent :: ObjInput s a -> Event a

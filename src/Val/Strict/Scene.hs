@@ -65,7 +65,7 @@ route :: MergeableEvent et => [ IL s -> IL (Event et) ] -- event generators
   -> IL (ObjInput s et,sf)
 route eventGenerators (gi,ooil,worldEvents) objs = mapILWithKey aux objs
   where
-    defaultObjInput = ObjInput noEvent gi ooil
+    defaultObjInput = ObjInput noEvent gi states
     states = mapIL ooObjState ooil
     events = map (\f -> f states) eventGenerators
     aux key o = (defaultObjInput{oiEvents= unions e },o)
@@ -82,7 +82,7 @@ routePar :: MergeableEvent et => [ IL s -> IL (Event et) ] -- event generators
 routePar eventGenerators (gi,ooil,worldEvents) objs =
   withStrategy (parTraversable (evalTuple2 rpar r0)) $ mapILWithKey aux objs
   where
-    defaultObjInput = ObjInput noEvent gi ooil
+    defaultObjInput = ObjInput noEvent gi states
     states = mapIL ooObjState ooil
     events = map (\f -> f states) eventGenerators
     aux key o = (defaultObjInput{oiEvents= unions e },o)

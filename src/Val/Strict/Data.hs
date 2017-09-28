@@ -83,7 +83,7 @@ type Object outState eventType = SF (ObjInput outState eventType) (ObjOutput out
 data ObjInput state eventType = ObjInput {
   oiEvents :: Event eventType,
   oiGameInput :: GameInput,
-  oiPastFrame :: IL (ObjOutput state eventType)
+  oiPastFrame :: IL state
 }
 
 instance (NFData eventType) => NFData (ObjInput state eventType) where
