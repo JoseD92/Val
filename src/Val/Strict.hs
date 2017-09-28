@@ -23,6 +23,8 @@ module Val.Strict (
   mouseMovedY,
   mousePosition,
   mousePositionMoved,
+  getObjOut,
+  getObjects,
   inputEvent,
 
   -- From Data

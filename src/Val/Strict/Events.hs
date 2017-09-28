@@ -29,12 +29,16 @@ module Val.Strict.Events (
   mousePosition,
   mousePositionMoved,
 
+  getObjOut,
+  getObjects,
   inputEvent
 ) where
 
 import EasyGLUT
 import FRP.Yampa
+import Control.Arrow
 import Val.Strict.Data
+import Val.Strict.IL
 import qualified Data.Map.Strict as Map
 
 -- | Generates an Event if the key have been press this frame.
@@ -90,6 +94,13 @@ mousePositionMoved initialPosition = proc oi -> do
     aux (x1,y1) (x2,y2) = if x1 /= x2 || y1 /= y2 then Event (x1-x2,y1-y2) else NoEvent
 
 
+-- | Returns the output state from last frame of the object with the given key if it existed last frame.
+getObjOut :: ObjInput state eventType -> ILKey -> Maybe state
+getObjOut oi key = fmap ooObjState $ lookupIL key $ oiPastFrame oi
+
+-- | Retruns the objects from last frame along with its key.
+getObjects :: ObjInput state eventType -> [(ILKey,state)]
+getObjects = map (second ooObjState) . assocsIL . oiPastFrame
 
 -- | Returns the event combinator.
 inputEvent :: ObjInput s a -> Event a
