@@ -93,7 +93,7 @@ plane = proc oi -> do
       trans = Transform
         (GL.Vector3 0 (-1) 0)
         (Quaternion 0 (GL.Vector3 0 1 0))
-        2 1 2
+        40 1 40
       uni = do
         set "use" (4 :: GL.GLint)
         setF "color" [r,g,b,1 :: GL.GLfloat]

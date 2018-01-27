@@ -1,16 +1,16 @@
 {-# LANGUAGE Arrows #-}
 
-import Val.Strict hiding (yaw)
-import EasyGL
-import EasyGLUT
-import Data.Either
-import System.IO (stderr)
-import FRP.Yampa hiding (RandomGen,randomR)
-import Data.List (find)
-import System.Random
+import           Data.Either
+import           Data.List                 (find)
+import qualified Data.Map                  as Map
+import           EasyGL
+import           EasyGLUT
+import           FRP.Yampa                 hiding (RandomGen, randomR)
 import qualified Graphics.Rendering.OpenGL as GL
-import qualified Data.Map as Map
-import qualified System.Random.TF as TF
+import           System.IO                 (stderr)
+import           System.Random
+import qualified System.Random.TF          as TF
+import           Val.Strict                hiding (yaw)
 
 -- Se cargan los recursos a utilizar en el ejemplo
 load :: IO ResourceMap
@@ -36,9 +36,9 @@ load = do
 -- Informacion de los objetos.
 data GameState = Null
   | Sphere {
-    x :: Double,
-    y :: Double,
-    z :: Double,
+    x    :: Double,
+    y    :: Double,
+    z    :: Double,
     size :: Double
   }
 
@@ -52,9 +52,9 @@ data EventTypes = Collition GameState
 
 instance MergeableEvent EventTypes where
   union NoCollition NoCollition = NoCollition
-  union a NoCollition = a
-  union NoCollition a = a
-  union a b = a
+  union a NoCollition           = a
+  union NoCollition a           = a
+  union a b                     = a
 
 -- Funcion que detecta colisiones.
 collitionGen :: IL GameState -> IL (Event EventTypes)
@@ -63,7 +63,7 @@ collitionGen inObjs = mapILWithKey aux inObjs
     assocs = assocsIL inObjs
     aux key obj = case valid of
       (x:_) -> Event $ Collition . snd $ x
-      [] -> noEvent
+      []    -> noEvent
       where
         valid = filter
           (\(key2,obj2) -> key /= key2 && collition obj obj2 )
@@ -81,7 +81,7 @@ plane = proc _ -> do
       trans = Transform
         (GL.Vector3 0 (-1) 0)
         (Quaternion 0 (GL.Vector3 0 1 0))
-        2 1 2
+        40 1 40
       uni = do
         set "color" $ GL.Color4 1 1 1 (1 :: GL.GLfloat)
   returnA -< ret{ooRenderer=Just("plane",trans,uni)}
@@ -115,7 +115,7 @@ getCollition = proc (oi,salida) -> do
   returnA -< tag myEvent salida
   where
     toEvent NoCollition = noEvent
-    toEvent a = Event a
+    toEvent a           = Event a
 
 sphere :: GL.GLdouble -> GL.GLdouble
   -> GL.GLdouble -> GL.GLdouble

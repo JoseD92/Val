@@ -4,16 +4,16 @@ module Test.Behaviours (
 plane,sphere
 ) where
 
-import Val.Strict hiding (yaw,picth)
-import EasyGL
-import qualified EasyGLUT as GLUT
-import Data.Either
-import FRP.Yampa
-import Data.List (find)
+import           Data.Either
+import           Data.List                 (find)
+import qualified Data.Map                  as Map
+import           EasyGL
+import qualified EasyGLUT                  as GLUT
+import           FRP.Yampa
 import qualified Graphics.Rendering.OpenGL as GL
-import qualified Data.Map as Map
-import Test.Data
-import System.Mem
+import           System.Mem
+import           Test.Data
+import           Val.Strict                hiding (picth, yaw)
 
 moveSF :: GL.GLdouble -> GL.GLdouble -> (GL.GLdouble,GL.GLdouble) -> SF () (GL.GLdouble,GL.GLdouble)
 moveSF limMax limMin d@(dir,_) = if (dir > 0) then aux2 (> limMax) (< limMin) d else aux2 (< limMin) (> limMax) d
@@ -37,7 +37,7 @@ getCollition = proc oi -> do
   returnA -< event noEvent toEvent $ inputEvent oi
   where
     toEvent NoCollition = noEvent
-    toEvent a = Event a
+    toEvent a           = Event a
 
 bounce :: GL.GLdouble -> GL.GLdouble -> GL.GLdouble -> SF () GL.GLdouble
 bounce gravity initPos velInit = aux initPos
@@ -77,7 +77,7 @@ plane = proc oi -> do
       trans = Transform
         (GL.Vector3 0 (-1) 0)
         (Quaternion 0 (GL.Vector3 0 1 0))
-        2 1 2
+        40 1 40
       uni = do
         set "use" (4 :: GL.GLint)
         setF "color" [r,g,b,1 :: GL.GLfloat]
