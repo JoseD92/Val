@@ -188,5 +188,6 @@ executable tron
                       , array
                       , time
                       , EasyGL
+                      , SGplus
   main-is:        Main.hs
   hs-source-dirs: examples/tron

@@ -66,3 +66,4 @@ packages:
 # compiler-check: newer-minor
 extra-deps:
 - ../EasyGL
+- SGplus-1.1
