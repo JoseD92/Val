@@ -25,7 +25,8 @@ data GameState = Null
   | Controller {
     camController :: Camera3D
   } | Moto {
-    motoCube :: Shape' GL.GLdouble
+    motoCube :: Shape' GL.GLdouble,
+    trans    :: (GL.GLdouble,GL.GLdouble,GL.GLdouble,GL.GLdouble)
   } | Trail {
     trailLine :: Line2' GL.GLdouble
   }

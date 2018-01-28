@@ -1,7 +1,8 @@
-{-# LANGUAGE Arrows #-}
+{-# LANGUAGE Arrows          #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Tron.Behaviours (
-plane,walls,moto
+plane,walls,moto,MotoEnv(..)
 ) where
 
 import           Data.Either
@@ -57,20 +58,31 @@ wall t = proc oi -> do
         set "scaley" (50 :: GL.GLfloat)
   returnA -< ret{ooRenderer=Just("wall",trans,uni)}
 
-moto :: GL.GLdouble -> Object GameState EventTypes
-moto speed = proc oi -> do
+data MotoEnv = MotoEnv {
+    initX   :: GL.GLdouble,
+    initY   :: GL.GLdouble,
+    initZ   :: GL.GLdouble,
+    initRot :: GL.GLdouble,
+    color   :: GL.Vector4 GL.GLfloat,
+    speed   :: GL.GLdouble,
+    rigth   :: GLUT.Key,
+    left    :: GLUT.Key
+  }
+
+moto :: MotoEnv -> Object GameState EventTypes
+moto MotoEnv{..} = proc oi -> do
   let steer = mergeBy (+)
-        (tag (keyDown (GLUT.Char 'k') oi) (-1))
-        (tag (keyDown (GLUT.Char 'l') oi) 1)
-  rot <- integral <<< arr (*25) -< event 0 id steer
+        (tag (keyDown rigth oi) (-1))
+        (tag (keyDown left oi) 1)
+  rot <- arr (+initRot) <<< integral <<< arr (*25) -< event 0 id steer
   trail <- repeatedly 0.1 () -< ()
-  x <- integral -< speed * sina rot
-  z <- integral -< speed * cosa rot
-  (prevx,prevz) <- dHold (0,0) -< tag trail (x,z)
-  let ret = newObjOutput (Moto $ makeRect x z rot)
-      trans = Transform (GL.Vector3 x 0 z) (Quaternion (rot+90) (GL.Vector3 0 1 0)) 1 1 1
-      uni = set "color" (GL.Vector4 1 0 0 0.2 :: GL.Vector4 GL.GLfloat)
-      go = genTrail (motoLength/speed) 60 (GL.Vector3 1 0 0) (prevx,prevz) (x,z)
+  x <- arr (+initX) <<< integral -< speed * sina rot
+  z <- arr (+initZ) <<< integral -< speed * cosa rot
+  (prevx,prevz) <- dHold (initX,initZ) -< tag trail (x,z)
+  let ret = newObjOutput (Moto (makeRect x z rot) (x,initY,z,rot))
+      trans = Transform (GL.Vector3 x initY z) (Quaternion (rot+90) (GL.Vector3 0 1 0)) 1 1 1
+      uni = set "color" color
+      go = genTrail (motoLength/speed) 60 color (prevx,prevz) (x,z)
   returnA -< ret{
     ooRenderer=Just("moto",trans,uni),
     ooSpawnReq=tag trail [go],
@@ -81,11 +93,11 @@ moto speed = proc oi -> do
 
 genTrail :: Time
   -> Time
-  -> GL.Vector3 GL.GLfloat
+  -> GL.Vector4 GL.GLfloat
   -> (GL.GLdouble,GL.GLdouble)
   -> (GL.GLdouble,GL.GLdouble)
   -> Object GameState EventTypes
-genTrail activationTime lifeTime (GL.Vector3 r g b) (x1,z1) (x2,z2) = proc _ -> do
+genTrail activationTime lifeTime (GL.Vector4 r g b _) (x1,z1) (x2,z2) = proc _ -> do
   e <- notYet <<< edge <<< arr (> activationTime) <<< time -< ()
   returnA -< (newObjOutput Null){
     ooSpawnReq = tag e [trailT],

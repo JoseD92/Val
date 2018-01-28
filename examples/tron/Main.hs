@@ -2,12 +2,13 @@ module Main where
 
 import           EasyGL
 import           EasyGLUT
+import qualified Graphics.Rendering.OpenGL as GL
 import           System.Environment
 import           System.IO
 import           Tron.Behaviours
 import           Tron.Controller
 import           Tron.Data
-import           Val.Strict         hiding (yaw)
+import           Val.Strict                hiding (yaw)
 
 load :: IO ResourceMap
 load = do
@@ -33,5 +34,27 @@ load = do
 
 main :: IO ()
 main = do
-    let il = [moto 5,plane 80,controllerSF 10 (-0.1)] ++ walls 80
+  l <- getArgs
+  case l of
+    ["double"] -> double
+    ["single"] -> single
+
+single :: IO ()
+single = do
+    let il = [moto p1env
+          ,plane 80
+          ,controllerSF (0,65,(-150)) (180,-30,0) 10 (-0.1)] -- ++ walls 80
     initScenePar cam load [eventGenerator] il
+    where
+      p1env = MotoEnv (-40) 0 0 90 (GL.Vector4 1 0 0 1) 5 (Char '2') (Char '1')
+
+double :: IO ()
+double = do
+    let il = [moto p1env
+          ,moto p2env
+          ,plane 80
+          ,controllerSF (0,80,(-200)) (180,-30,0) 10 (-0.1)] -- ++ walls 80
+    initScenePar cam load [eventGenerator] il
+    where
+      p1env = MotoEnv (-40) 0 0 90 (GL.Vector4 1 0 0 1) 5 (Char '2') (Char '1')
+      p2env = MotoEnv (40) 0 0 270 (GL.Vector4 0 1 0 1) 5 (Char 'l') (Char 'k')

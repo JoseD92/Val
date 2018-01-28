@@ -68,23 +68,27 @@ updateCam mvSensitivity cam0 yaw pitch roll deltaT gi = cam2
       else cam0
     cam2 = setYawPitchRoll yaw pitch roll cam1
 
-controllerSF :: Double -> Double -> Object GameState EventTypes
-controllerSF mvSen viewSen = proc oi -> do
+controllerSF :: (GL.GLdouble,GL.GLdouble,GL.GLdouble)
+  -> (GL.GLdouble,GL.GLdouble,GL.GLdouble)
+  -> Double
+  -> Double
+  -> Object GameState EventTypes
+controllerSF (initx,inity,initz) (y1,p1,r1) mvSen viewSen = proc oi -> do
   let (mousex,mousey) = event (0,0) id $ mouseMoved oi
       t = deltaTime oi
       (wx,wy) = uiScreenSize . uiState $ oi
       uiAction2 = event [] (const [FixMouseAt (div wx 2) (div wy 2),HideCursor]) $ keyDown (GLUT.Char 'z') oi
       uiAction = event uiAction2 (const [FreeMouse,ShowCursor]) $ keyDown (GLUT.Char 'x') oi
   rec
-    yaw <- iPre 0 <<< sumCiclicSF 360 -< (yaw,realToFrac $ viewSen * fromIntegral mousex)
-    pitch <- iPre 0 <<< sumWithLimitsSF 90 (-90) -< (pitch,realToFrac $ viewSen * fromIntegral mousey)
-    roll <- iPre 0 -< roll
+    yaw <- iPre y1 <<< sumCiclicSF 360 -< (yaw,realToFrac $ viewSen * fromIntegral mousex)
+    pitch <- iPre p1 <<< sumWithLimitsSF 90 (-90) -< (pitch,realToFrac $ viewSen * fromIntegral mousey)
+    roll <- iPre r1 -< roll
     cam <- iPre c -< updateCam mvSen cam yaw pitch roll t oi
 
   let out = (newObjOutput $ Controller cam){ooUIReq=uiAction}
   returnA -< out
   where
-    (Right c) = createCamera3D 0 0 10 0 0 0 30 (800/600) 0.3 200
+    (Right c) = createCamera3D initx inity initz 0 0 0 30 (800/600) 0.3 400
 
 cam :: SF (GameInput,IL GameState) Camera3D
 cam = proc (_,il) -> do --makeCamSF (MyData c 0 0 0) (camfun 5 5)
@@ -92,7 +96,7 @@ cam = proc (_,il) -> do --makeCamSF (MyData c 0 0 0) (camfun 5 5)
       controllerFound <- iPre noEvent <<< controlerArr -< (controllerFound,il)
     returnA -< event c (camController . snd) controllerFound
   where
-    (Right c) = createCamera3D 0 0 10 0 0 0 30 (800/600) 0.3 200
+    (Right c) = createCamera3D 0 0 0 0 0 0 30 (800/600) 0.3 400
     isController Controller{} = True
     isController _            = False
     control il = find (isController . snd) $ assocsIL il
