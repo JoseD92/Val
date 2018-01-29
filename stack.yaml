@@ -65,5 +65,6 @@ packages:
 # Allow a newer minor version of GHC than the snapshot specifies
 # compiler-check: newer-minor
 extra-deps:
-- ../EasyGL
+- git: https://github.com/JoseD92/EasyGL.git
+  commit: 9b803ddbf91aa60e28addddb511d7bd60457f2de
 - SGplus-1.1

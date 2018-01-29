@@ -22,7 +22,4 @@ cabal.project.local
 .HTF/
 *.exe
 *.dump-simpl
-
-src/EasyGL.hs
-src/EasyGLUT.hs
-src/EasyGL/
+*~
